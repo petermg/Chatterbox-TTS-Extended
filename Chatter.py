@@ -50,13 +50,23 @@ def save_settings(mapping):
         "large (~10–13 GB OpenAI / ~4.5–6.5 GB faster-whisper)": "large"
     }
     v = mapping.get("whisper_model_dropdown", "")
-    # If it's already a label, keep it; if it's a code, map to label
     if v not in whisper_model_map:
         label = next((k for k, code in whisper_model_map.items() if code == v), v)
         mapping["whisper_model_dropdown"] = label
+
+    # --- Add the extra "per-generation" fields for full compatibility ---
+    if "input_basename" not in mapping:
+        mapping["input_basename"] = "text_input_"
+    if "audio_prompt_path_input" not in mapping:
+        mapping["audio_prompt_path_input"] = None
+    if "generation_time" not in mapping:
+        import datetime
+        mapping["generation_time"] = datetime.datetime.now().isoformat()
+    if "output_audio_files" not in mapping:
+        mapping["output_audio_files"] = []
+
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
-        
         
 def save_settings_csv(settings_dict, output_audio_files, csv_path):
     """
@@ -95,7 +105,7 @@ def get_or_load_vc_model():
 
 
 
-def voice_conversion(input_audio_path, target_voice_audio_path, chunk_sec=60, overlap_sec=0.1, disable_watermark=False):
+def voice_conversion(input_audio_path, target_voice_audio_path, chunk_sec=60, overlap_sec=0.1, disable_watermark=True):
     import soundfile as sf
     import librosa
     vc_model = get_or_load_vc_model()
@@ -1082,6 +1092,61 @@ whisper_model_map = {
     "medium (~5–8 GB OpenAI / ~2.5–4.5 GB faster-whisper)": "medium",
     "large (~10–13 GB OpenAI / ~4.5–6.5 GB faster-whisper)": "large"
 }
+
+
+def apply_settings_json(settings_json):
+    import json
+    if not settings_json:
+        return [gr.update() for _ in range(35)]
+    try:
+        with open(settings_json.name, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        # This order must match the order of your Gradio inputs!
+        return [
+            loaded.get("text_input", ""),
+            None,  # text_file_input: cannot load a file from JSON
+            loaded.get("separate_files_checkbox", False),
+            loaded.get("audio_prompt_path_input", ""),
+            loaded.get("export_format_checkboxes", ["wav"]),
+            loaded.get("disable_watermark_checkbox", False),
+            loaded.get("num_generations_input", 1),
+            loaded.get("num_candidates_slider", 3),
+            loaded.get("max_attempts_slider", 3),
+            loaded.get("bypass_whisper_checkbox", False),
+            loaded.get("whisper_model_dropdown", "medium (~5–8 GB OpenAI / ~2.5–4.5 GB faster-whisper)"),
+            loaded.get("use_faster_whisper_checkbox", True),
+            loaded.get("enable_parallel_checkbox", True),
+            loaded.get("use_longest_transcript_on_fail_checkbox", True),
+            loaded.get("num_parallel_workers_slider", 4),
+            loaded.get("exaggeration_slider", 0.5),
+            loaded.get("cfg_weight_slider", 1.0),
+            loaded.get("temp_slider", 0.75),
+            loaded.get("seed_input", 0),
+            loaded.get("enable_batching_checkbox", False),
+            loaded.get("smart_batch_short_sentences_checkbox", True),
+            loaded.get("to_lowercase_checkbox", True),
+            loaded.get("normalize_spacing_checkbox", True),
+            loaded.get("fix_dot_letters_checkbox", True),
+            loaded.get("remove_reference_numbers_checkbox", True),
+            loaded.get("use_auto_editor_checkbox", False),
+            loaded.get("keep_original_checkbox", False),
+            loaded.get("threshold_slider", 0.06),
+            loaded.get("margin_slider", 0.2),
+            loaded.get("normalize_audio_checkbox", False),
+            loaded.get("normalize_method_dropdown", "ebu"),
+            loaded.get("normalize_level_slider", -24),
+            loaded.get("normalize_tp_slider", -2),
+            loaded.get("normalize_lra_slider", 7),
+            loaded.get("sound_words_field", ""),
+        ]
+    except Exception as e:
+        print(f"[ERROR] Failed to load settings JSON: {e}")
+        return [gr.update() for _ in range(35)]
+
+
+
+
+
 def main():
     with gr.Blocks() as demo:
         gr.Markdown("# 🎧 Chatterbox TTS Extended")
@@ -1090,8 +1155,7 @@ def main():
             with gr.Tab("TTS & Multi-Gen"):
                 with gr.Row():
                     with gr.Column():
-                        text_input = gr.Textbox(label="Text Input", lines=6, value=settings["text_input"]
-        )
+                        text_input = gr.Textbox(label="Text Input", lines=6, value=settings["text_input"])
                         text_file_input = gr.File(label="Text File(s) (.txt)", file_types=[".txt"], file_count="multiple")
                         separate_files_checkbox = gr.Checkbox(label="Generate separate audio files per text file", value=settings["separate_files_checkbox"])
                         ref_audio_input = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Reference Audio (Optional)")
@@ -1105,7 +1169,6 @@ def main():
                         num_candidates_slider = gr.Slider(1, 10, value=settings["num_candidates_slider"], step=1, label="Number of Candidates Per Chunk (after batching)")
                         max_attempts_slider = gr.Slider(1, 10, value=settings["max_attempts_slider"], step=1, label="Max Attempts Per Candidate (Whisper check retries)")
                         bypass_whisper_checkbox = gr.Checkbox(label="Bypass Whisper Checking (pick shortest candidate regardless of transcription)", value=settings["bypass_whisper_checkbox"])
-
                         whisper_model_dropdown = gr.Dropdown(
                             choices=whisper_model_choices,
                             value=settings["whisper_model_dropdown"],
@@ -1116,15 +1179,13 @@ def main():
                             label="Use faster-whisper (SYSTRAN) backend for Whisper validation (much faster, less VRAM, almost as accurate)",
                             value=settings["use_faster_whisper_checkbox"]
                         )
-
-
                         enable_parallel_checkbox = gr.Checkbox(label="Enable Parallel Chunk Processing", value=settings["enable_parallel_checkbox"], visible=False)
                         use_longest_transcript_on_fail_checkbox = gr.Checkbox(
                         label="When all candidates fail Whisper check, pick candidate with longest transcript (not highest fuzzy match score)",
                         value=settings["use_longest_transcript_on_fail_checkbox"]
                         )
-
                         num_parallel_workers_slider = gr.Slider(1, 8, value=settings["num_parallel_workers_slider"], step=1, label="Parallel Workers - set to 1 for sequential processing")
+                        load_settings_file = gr.File(label="Load Settings (.json)", file_types=[".json"])
 
                         run_button = gr.Button("Generate")
                     with gr.Column():
@@ -1168,6 +1229,51 @@ def main():
                             info="Examples: sss, ss, ahh=>um, hmm (removes/replace as standalone or quoted; not in words)",
                             value=settings["sound_words_field"]
                         )
+                        # === LOAD SETTINGS FROM JSON FEATURE ===
+                        load_settings_file.change(
+                            fn=apply_settings_json,
+                            inputs=[load_settings_file],
+                            outputs=[
+                                text_input,                          # 0
+                                text_file_input,                     # 1
+                                separate_files_checkbox,             # 2
+                                ref_audio_input,                     # 3
+                                export_format_checkboxes,            # 4
+                                disable_watermark_checkbox,          # 5
+                                num_generations_input,               # 6
+                                num_candidates_slider,               # 7
+                                max_attempts_slider,                 # 8
+                                bypass_whisper_checkbox,             # 9
+                                whisper_model_dropdown,              # 10
+                                use_faster_whisper_checkbox,         # 11
+                                enable_parallel_checkbox,            # 12
+                                use_longest_transcript_on_fail_checkbox, # 13
+                                num_parallel_workers_slider,         # 14
+                                exaggeration_slider,                 # 15
+                                cfg_weight_slider,                   # 16
+                                temp_slider,                         # 17
+                                seed_input,                          # 18
+                                enable_batching_checkbox,            # 19
+                                smart_batch_short_sentences_checkbox,# 20
+                                to_lowercase_checkbox,               # 21
+                                normalize_spacing_checkbox,          # 22
+                                fix_dot_letters_checkbox,            # 23
+                                remove_reference_numbers_checkbox,   # 24
+                                use_auto_editor_checkbox,            # 25
+                                keep_original_checkbox,              # 26
+                                threshold_slider,                    # 27
+                                margin_slider,                       # 28
+                                normalize_audio_checkbox,            # 29
+                                normalize_method_dropdown,           # 30
+                                normalize_level_slider,              # 31
+                                normalize_tp_slider,                 # 32
+                                normalize_lra_slider,                # 33
+                                sound_words_field,                   # 34
+                            ]
+                        )
+
+                        
+                        
 
                         output_audio = gr.Files(label="Download Final Audio File(s)")
                         audio_dropdown = gr.Dropdown(label="Click to Preview Any Generated File")
@@ -1215,6 +1321,8 @@ def main():
                 mapping = dict(zip(keys, vals))
                 save_settings(mapping)
                 return
+             
+            
 
             run_button.click(
                 fn=lambda *args: (
@@ -1238,25 +1346,25 @@ def main():
                     normalize_spacing_checkbox,   #13
                     fix_dot_letters_checkbox,     #14
                     remove_reference_numbers_checkbox,   #15
-                    keep_original_checkbox,       #15
-                    smart_batch_short_sentences_checkbox,#16
-                    disable_watermark_checkbox,   #17
-                    num_generations_input,        #18
-                    normalize_audio_checkbox,     #19
-                    normalize_method_dropdown,    #20
-                    normalize_level_slider,       #21
-                    normalize_tp_slider,          #22
-                    normalize_lra_slider,         #23
-                    num_candidates_slider,        #24
-                    max_attempts_slider,          #25
-                    bypass_whisper_checkbox,      #26
-                    whisper_model_dropdown,       #27
-                    enable_parallel_checkbox,     #28
-                    num_parallel_workers_slider,  #29
-                    use_longest_transcript_on_fail_checkbox, #30
-                    sound_words_field,            #31
-                    use_faster_whisper_checkbox,  #32
-                    separate_files_checkbox       #33
+                    keep_original_checkbox,       #16
+                    smart_batch_short_sentences_checkbox,#17
+                    disable_watermark_checkbox,   #18
+                    num_generations_input,        #19
+                    normalize_audio_checkbox,     #20
+                    normalize_method_dropdown,    #21
+                    normalize_level_slider,       #22
+                    normalize_tp_slider,          #23
+                    normalize_lra_slider,         #24
+                    num_candidates_slider,        #25
+                    max_attempts_slider,          #26
+                    bypass_whisper_checkbox,      #27
+                    whisper_model_dropdown,       #28
+                    enable_parallel_checkbox,     #29
+                    num_parallel_workers_slider,  #30
+                    use_longest_transcript_on_fail_checkbox, #31
+                    sound_words_field,            #32
+                    use_faster_whisper_checkbox,  #33
+                    separate_files_checkbox       #34
                 ],
                 outputs=[output_audio, audio_dropdown, audio_preview],
             )
