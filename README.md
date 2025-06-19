@@ -53,6 +53,7 @@ Chatterbox-TTS-Extended is a *power-user TTS pipeline* for advanced single and b
 | Whisper/faster-whisper backend            | ✔             | Yes          |
 | Persistent settings (JSON/CSV per output) | ✔             | Yes          |
 | Settings load/save in UI                  | ✔             | Yes          |
+| Pause Tag Support                         | ✔             | Yes          |
 | Audio preview & download                  | ✔             | Yes          |
 | Help/Instructions                         | ✔ (Accordion) | Yes          |
 | Voice Conversion (VC tab)                 | ✔             | Yes          |
@@ -105,7 +106,7 @@ Chatterbox-TTS-Extended is a *power-user TTS pipeline* for advanced single and b
 - **Inline reference number removal:** Automatically removes numbers after sentence-ending punctuation (e.g., `.188` or `.”3`).
 - **Sound word removal/replacement:** Configurable box for unwanted noises or phrases, e.g. `um`, `ahh`, or custom mappings like `zzz=>sigh`.
   - Handles standalone words, possessives, quoted patterns, and dash/punctuation-only removals.
-
+- **Pause Tag:** `[pause:x.xs]` tags are parsed to add custom, mandatory silence lengths at precisions of down to 0.1s .  Ex: `Hello[pause:0.5s]world`
 ---
 
 ## Audio Post-Processing
