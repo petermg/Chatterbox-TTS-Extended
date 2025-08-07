@@ -1,0 +1,7 @@
+# Python
+__pycache__
+.mypy_cache/
+.venv/
+
+# VS Code
+*.code-workspace
