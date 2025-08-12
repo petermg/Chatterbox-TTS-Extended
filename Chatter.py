@@ -939,6 +939,8 @@ def process_text_for_tts(
                 for chunk_idx, cand in all_candidates:
                     candidate_path = cand['path']
                     sentence_group = cand['sentence_group']
+                    # Replace all pause patterns with a space
+                    sentence_group = re.sub(r'\[pause:([\d.]+)s\]', " ", sentence_group)
                     try:
                         if not os.path.exists(candidate_path) or os.path.getsize(candidate_path) < 1024:
                             print(f"[ERROR] Candidate file missing or too small: {candidate_path}")
@@ -993,6 +995,8 @@ def process_text_for_tts(
                         for cand in candidates:
                             candidate_path = cand['path']
                             sentence_group = cand['sentence_group']
+                            # Replace all pause patterns with a space
+                            sentence_group = re.sub(r'\[pause:([\d.]+)s\]', " ", sentence_group)
                             try:
                                 if not os.path.exists(candidate_path) or os.path.getsize(candidate_path) < 1024:
                                     print(f"[ERROR] Retry candidate file missing or too small: {candidate_path}")
