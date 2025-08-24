@@ -1,0 +1,47 @@
+[project]
+name = "Chatterbox-TTS-Extended"
+version = "0.1.0"
+description = "Power-user TTS pipeline for advanced single and batch speech synthesis, voice conversion, and artifact-free audio generation, based on Chatterbox-TTS."
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+	"gradio",
+	"numpy",
+	"faster-whisper",
+	"openai-whisper",
+	"ffmpeg-python",
+	"auto-editor==27.1.1",
+	"resampy==0.4.3",
+	"librosa==0.10.0",
+	"s3tokenizer",
+	"spaces",
+	"transformers==4.46.3",
+	"diffusers==0.29.0",
+	"omegaconf==2.3.0",
+	"resemble-perth==1.0.1",
+	"silero-vad==5.1.2",
+	"conformer==0.3.2",
+	"soundfile",
+	"nltk",
+	"torch==2.7.0",
+	"torchaudio==2.7.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.7",
+]
