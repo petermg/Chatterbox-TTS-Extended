@@ -1579,9 +1579,9 @@ def apply_settings_json(settings_json):
 
 
 def main(server_name=None, server_port=None, share=False):
-    with gr.Blocks(title="Chatterbox TTS Extended") as demo:
-        gr.Markdown("# 🎧 Chatterbox TTS Extended")
-        with gr.Tabs():
+    app_title = "🎧 Chatterbox TTS Extended"
+    with gr.Blocks(title=app_title) as demo:
+        gr.Markdown(f"# {app_title}")
             # TTS Tab (your original interface)
             with gr.Tab("TTS & Multi-Gen"):
                 with gr.Row():
