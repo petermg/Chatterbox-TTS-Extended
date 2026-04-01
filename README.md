@@ -27,6 +27,7 @@ Chatterbox-TTS-Extended is a *power-user TTS pipeline* for advanced single and b
 - [Parallel Processing & Performance](#parallel-processing--performance)
 - [Persistent Settings & UI](#persistent-settings--ui)
 - [🎙️ Voice Conversion (VC) Tab](#️-voice-conversion-vc-tab)
+- [☁️ Cloud TTS (MiniMax)](#️-cloud-tts-minimax)
 - [Tips & Troubleshooting](#tips--troubleshooting)
 - [Installation](#-installation)
 - [Feedback & Contributions](#-feedback--contributions)
@@ -59,6 +60,7 @@ Chatterbox-TTS-Extended is a *power-user TTS pipeline* for advanced single and b
 | Audio preview & download                  | ✔             | Yes          |
 | Help/Instructions                         | ✔ (Accordion) | Yes          |
 | Voice Conversion (VC tab)                 | ✔             | Yes          |
+| **Cloud TTS (MiniMax)**                   | ✔             | Yes          |
 
 ---
 
@@ -191,6 +193,48 @@ Convert any voice to sound like another!
 - Automatic chunking and processing—no manual intervention needed.
 - **Pitch shift** control.
 - Option to **disable watermarking**.
+
+---
+
+## ☁️ Cloud TTS (MiniMax)
+
+Use [MiniMax](https://www.minimaxi.com/) cloud TTS as an alternative to local Chatterbox synthesis — no GPU required!
+
+**Available in the "Cloud TTS (MiniMax)" tab in the Gradio UI.**
+
+### Setup
+
+1. Get an API key from [MiniMax Platform](https://platform.minimaxi.com/)
+2. Set the environment variable:
+   ```bash
+   export MINIMAX_API_KEY="your-api-key-here"
+   ```
+   Or enter the key directly in the UI.
+
+### Features
+
+- **Models:** `speech-2.8-hd` (high quality) and `speech-2.8-turbo` (fast)
+- **12 built-in voices:** English_Graceful_Lady, English_Insightful_Speaker, English_radiant_girl, English_Persuasive_Man, English_Lucky_Robot, Wise_Woman, cute_boy, lovely_girl, Friendly_Person, Inspirational_girl, Deep_Voice_Man, sweet_girl
+- **Adjustable speech speed** (0.5x – 2.0x)
+- **Export as MP3 or WAV**
+- **File upload support** — upload a `.txt` file for longer texts
+
+### Programmatic Usage
+
+```python
+from minimax_tts import MiniMaxTTS
+
+tts = MiniMaxTTS(api_key="your-key", model="speech-2.8-hd", voice_id="Friendly_Person")
+
+# Get raw MP3 bytes
+audio_bytes = tts.synthesize("Hello, world!")
+
+# Save to file (WAV or MP3)
+tts.synthesize_to_file("Hello, world!", "output.wav")
+
+# Get a PyTorch tensor (compatible with the Chatterbox pipeline)
+tensor, sample_rate = tts.synthesize_to_tensor("Hello, world!")
+```
 
 ---
 
