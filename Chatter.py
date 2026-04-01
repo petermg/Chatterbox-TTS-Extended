@@ -1578,6 +1578,32 @@ def apply_settings_json(settings_json):
 
 
 
+def _minimax_tts_models():
+    """Return dict of MiniMax TTS model IDs -> descriptions."""
+    return {
+        "speech-2.8-hd": "High-definition quality, slower",
+        "speech-2.8-turbo": "Fast generation, slightly lower quality",
+    }
+
+
+def _minimax_tts_voices():
+    """Return dict of MiniMax voice IDs -> descriptions."""
+    return {
+        "English_Graceful_Lady": "Graceful female voice",
+        "English_Insightful_Speaker": "Insightful male voice",
+        "English_radiant_girl": "Radiant young female voice",
+        "English_Persuasive_Man": "Persuasive male voice",
+        "English_Lucky_Robot": "Robotic voice",
+        "Wise_Woman": "Wise female voice",
+        "cute_boy": "Cute boy voice",
+        "lovely_girl": "Lovely girl voice",
+        "Friendly_Person": "Friendly neutral voice",
+        "Inspirational_girl": "Inspirational female voice",
+        "Deep_Voice_Man": "Deep male voice",
+        "sweet_girl": "Sweet girl voice",
+    }
+
+
 def main(server_name=None, server_port=None, share=False):
     with gr.Blocks() as demo:
         gr.Markdown("# 🎧 Chatterbox TTS Extended")
@@ -1844,6 +1870,124 @@ def main(server_name=None, server_port=None, share=False):
                     fn=_vc_wrapper,
                     inputs=[vc_input_audio, vc_target_audio, disable_watermark_checkbox, vc_pitch_shift],
                     outputs=[vc_output_files, vc_output_audio],
+                )
+
+            # === CLOUD TTS TAB: MiniMax Cloud TTS ===
+            with gr.Tab("Cloud TTS (MiniMax)"):
+                gr.Markdown(
+                    "## Cloud TTS via MiniMax\n"
+                    "Generate speech using MiniMax's cloud TTS API — no local GPU required.\n"
+                    "Set your `MINIMAX_API_KEY` environment variable or enter it below.\n\n"
+                    "**Models:** `speech-2.8-hd` (high quality) &nbsp;|&nbsp; `speech-2.8-turbo` (fast)\n\n"
+                    "**API docs:** [MiniMax T2A V2](https://platform.minimaxi.com/document/T2A%20V2)"
+                )
+                with gr.Row():
+                    with gr.Column():
+                        mm_api_key_input = gr.Textbox(
+                            label="MiniMax API Key",
+                            type="password",
+                            placeholder="Enter your MINIMAX_API_KEY (or set env var)",
+                            value=os.environ.get("MINIMAX_API_KEY", ""),
+                        )
+                        mm_text_input = gr.Textbox(
+                            label="Text to Synthesize",
+                            lines=6,
+                            placeholder="Enter text here...",
+                        )
+                        mm_text_file_input = gr.File(
+                            label="Or upload a .txt file",
+                            file_types=[".txt"],
+                        )
+                        mm_model_dropdown = gr.Dropdown(
+                            choices=list(_minimax_tts_models().keys()),
+                            value="speech-2.8-hd",
+                            label="TTS Model",
+                        )
+                        mm_voice_dropdown = gr.Dropdown(
+                            choices=list(_minimax_tts_voices().keys()),
+                            value="Friendly_Person",
+                            label="Voice",
+                        )
+                        mm_speed_slider = gr.Slider(
+                            0.5, 2.0, value=1.0, step=0.1,
+                            label="Speech Speed",
+                        )
+                        mm_export_format = gr.Radio(
+                            choices=["mp3", "wav"],
+                            value="mp3",
+                            label="Export Format",
+                        )
+                        mm_generate_btn = gr.Button("Generate with MiniMax")
+                    with gr.Column():
+                        mm_output_files = gr.Files(label="Output File(s)")
+                        mm_output_audio = gr.Audio(label="Audio Preview", interactive=True)
+                        mm_status = gr.Textbox(label="Status", interactive=False)
+
+                def _minimax_tts_generate(
+                    api_key, text, text_file, model, voice, speed, export_fmt,
+                ):
+                    from minimax_tts import MiniMaxTTS, MiniMaxTTSError
+
+                    # Read text from file if provided
+                    if text_file is not None:
+                        try:
+                            fpath = text_file.name if hasattr(text_file, "name") else text_file
+                            with open(fpath, "r", encoding="utf-8") as f:
+                                text = f.read()
+                        except Exception as e:
+                            return [], None, f"Error reading file: {e}"
+
+                    if not text or not text.strip():
+                        return [], None, "Please provide text to synthesize."
+
+                    key = api_key.strip() or os.environ.get("MINIMAX_API_KEY", "")
+                    if not key:
+                        return [], None, "MiniMax API key is required."
+
+                    try:
+                        tts = MiniMaxTTS(api_key=key, model=model, voice_id=voice)
+                    except MiniMaxTTSError as e:
+                        return [], None, str(e)
+
+                    os.makedirs("output", exist_ok=True)
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")[:-3]
+
+                    if export_fmt == "wav":
+                        out_path = f"output/minimax_tts_{timestamp}.wav"
+                    else:
+                        out_path = f"output/minimax_tts_{timestamp}.mp3"
+
+                    try:
+                        tts.synthesize_to_file(
+                            text,
+                            out_path,
+                            voice_id=voice,
+                            model=model,
+                            speed=speed,
+                        )
+                        return (
+                            [out_path],
+                            out_path,
+                            f"Success! Generated {os.path.basename(out_path)} "
+                            f"({os.path.getsize(out_path) / 1024:.1f} KB)",
+                        )
+                    except MiniMaxTTSError as e:
+                        return [], None, f"MiniMax TTS error: {e}"
+                    except Exception as e:
+                        return [], None, f"Unexpected error: {e}"
+
+                mm_generate_btn.click(
+                    fn=_minimax_tts_generate,
+                    inputs=[
+                        mm_api_key_input,
+                        mm_text_input,
+                        mm_text_file_input,
+                        mm_model_dropdown,
+                        mm_voice_dropdown,
+                        mm_speed_slider,
+                        mm_export_format,
+                    ],
+                    outputs=[mm_output_files, mm_output_audio, mm_status],
                 )
 
         with gr.Accordion("Show Help / Instructions", open=False):

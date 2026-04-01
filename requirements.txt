@@ -17,6 +17,7 @@ conformer==0.3.2
 pyrnnoise==0.3.8
 soundfile
 nltk
+requests
 --extra-index-url=https://download.pytorch.org/whl/cu128
 torch==2.7.0
 torchaudio==2.7.0
