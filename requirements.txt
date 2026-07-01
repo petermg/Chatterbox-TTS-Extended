@@ -3,7 +3,8 @@ numpy
 faster-whisper
 openai-whisper
 ffmpeg-python
-auto-editor==27.1.1
+auto-editor
+pydub
 resampy==0.4.3
 librosa==0.10.0
 s3tokenizer
