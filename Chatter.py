@@ -1372,6 +1372,7 @@ def process_text_for_tts(
                     "auto-editor",
                     "--edit", f"audio:threshold={ae_threshold}",
                     "--margin", f"{ae_margin}s",
+                    "--no-open",  # don't launch the default media player
                     stereo_input,
                     "-o", cleaned_output
                 ]
