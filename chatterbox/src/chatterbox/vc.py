@@ -2,7 +2,6 @@ from pathlib import Path
 
 import librosa
 import torch
-#import perth
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
 
@@ -26,7 +25,8 @@ class ChatterboxVC:
         self.sr = S3GEN_SR
         self.s3gen = s3gen
         self.device = device
-        #self.watermarker = perth.PerthImplicitWatermarker()
+        # Watermarking is optional and disabled by default
+        self.watermarker = None
         if ref_dict is None:
             self.ref_dict = None
         else:
@@ -91,7 +91,10 @@ class ChatterboxVC:
         if target_voice_path:
             self.set_target_voice(target_voice_path, pitch_shift)
         else:
-            assert self.ref_dict is not None, "Please `prepare_conditionals` first or specify `target_voice_path`"
+            if self.ref_dict is None:
+                raise RuntimeError(
+                    "Please `set_target_voice` first or specify `target_voice_path`"
+                )
 
         with torch.inference_mode():
             audio_16, _ = librosa.load(audio, sr=S3_SR)
@@ -103,8 +106,10 @@ class ChatterboxVC:
                 ref_dict=self.ref_dict,
             )
             wav = wav.squeeze(0).detach().cpu().numpy()
-            if apply_watermark:
-                watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
+            if apply_watermark and self.watermarker is not None:
+                watermarked_wav = self.watermarker.apply_watermark(
+                    wav, sample_rate=self.sr
+                )
             else:
                 watermarked_wav = wav
         return torch.from_numpy(watermarked_wav).unsqueeze(0)

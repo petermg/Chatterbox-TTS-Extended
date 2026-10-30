@@ -225,6 +225,17 @@ pip install --force-reinstall -r requirements.txt
 # If needed, try requirements.base.with.versions.txt or requirements_frozen.txt
 ```
 
+### Updating dependencies
+
+`requirements.txt` pins exact versions for reproducible installs. When upgrading a
+package, update its version in `requirements.txt` and reinstall:
+
+```bash
+pip install --upgrade <package>
+pip install --force-reinstall -r requirements.txt
+```
+After adjusting versions, run the test suite to ensure everything works as expected.
+
 Run:
 ```bash
 # Use your repo's main file. For example:
