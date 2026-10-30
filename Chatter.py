@@ -501,10 +501,11 @@ def smart_append_short_sentences(sentences, max_chars=300):
 def normalize_with_ffmpeg(input_wav, output_wav, method="ebu", i=-24, tp=-2, lra=7):
     if method == "ebu":
         loudnorm = f"loudnorm=I={i}:TP={tp}:LRA={lra}"
+        # loudnorm upsamples to 192 kHz internally; write back at the original rate
         (
             ffmpeg
             .input(input_wav)
-            .output(output_wav, af=loudnorm)
+            .output(output_wav, af=loudnorm, ar=sf.info(input_wav).samplerate)
             .overwrite_output()
             .run(quiet=True)
         )
@@ -533,29 +534,20 @@ def _convert_to_pcm48k_mono(input_wav, output_wav, sr=48000):
 
 def _run_pyrnnoise(input_wav, output_wav):
     """
-    Try the pyrnnoise CLI ('denoise') first; if missing or fails, fall back to Python API.
+    Denoise input_wav with the pyrnnoise Python API.
+    (The bundled 'denoise' CLI is broken in pyrnnoise 0.4.x, so it isn't used.)
     """
     if not _PYRNNOISE_AVAILABLE:
         print("[DENOISE] pyrnnoise not available; skipping.")
         return False
 
     print("[DENOISE] Running pyrnnoise (RNNoise)…")
-    # Prefer CLI if present (often faster and lighter on Python mem)
-    try:
-        result = subprocess.run(["denoise", input_wav, output_wav], capture_output=True, text=True)
-        if result.returncode == 0 and os.path.exists(output_wav) and os.path.getsize(output_wav) > 1024:
-            print(f"[DENOISE] Saved: {output_wav}")
-            return True
-        else:
-            print("[DENOISE] pyrnnoise CLI failed, falling back to Python API…")
-    except FileNotFoundError:
-        print("[DENOISE] pyrnnoise CLI not found, using Python API…")
-
-    # Python API fallback
-    rate, data = sf.read(input_wav)
+    data, rate = sf.read(input_wav, dtype="int16", always_2d=True)
     denoiser = pyrnnoise.RNNoise(rate)
-    denoised = denoiser.process_buffer(data)
-    sf.write(output_wav, denoised, rate)
+    # denoise_chunk expects (channels, samples) and yields (speech_prob, frame) pairs
+    frames = [frame for _, frame in denoiser.denoise_chunk(data.T, partial=True)]
+    denoised = np.concatenate(frames, axis=-1)
+    sf.write(output_wav, denoised.T, rate)
     print(f"[DENOISE] Saved: {output_wav}")
     return True
 
@@ -607,10 +599,21 @@ def _apply_pyrnnoise_in_place(wav_output_path):
 
 def get_wav_duration(path):
     try:
-        return librosa.get_duration(filename=path)
+        return sf.info(path).duration
     except Exception as e:
-        print(f"[ERROR] librosa.get_duration failed: {e}")
+        print(f"[ERROR] Reading WAV duration failed: {e}")
         return float('inf')
+
+# torchaudio>=2.9 routes save/load through TorchCodec, which needs FFmpeg shared DLLs.
+# Use soundfile instead so WAV I/O works without them.
+def save_wav(path, wav, sr):
+    """Save a (channels, samples) tensor to a WAV file."""
+    sf.write(path, wav.detach().cpu().float().numpy().T, sr)
+
+def load_wav(path):
+    """Load a WAV file as a (channels, samples) float32 tensor and its sample rate."""
+    data, sr = sf.read(path, dtype="float32", always_2d=True)
+    return torch.from_numpy(data.T.copy()), sr
 
 def normalize_for_compare_all_punct(text):
     text = re.sub(r'[–—-]', ' ', text)
@@ -750,7 +753,7 @@ def process_one_chunk(
                     
 
                     candidate_path = f"temp/gen{gen_index+1}_chunk_{idx:03d}_cand_{cand_idx+1}_try{retry_attempt_number}_seed{candidate_seed}.wav"
-                    torchaudio.save(candidate_path, wav, model.sr)
+                    save_wav(candidate_path, wav, model.sr)
                     for _ in range(10):
                         if os.path.exists(candidate_path) and os.path.getsize(candidate_path) > 1024:
                             break
@@ -846,7 +849,7 @@ def process_one_chunk_deterministic(
                             )
 
                     candidate_path = f"temp/gen{gen_index+1}_chunk_{idx:03d}_cand_{cand_idx+1}_try{retry_attempt_number}_seed{candidate_seed}.wav"
-                    torchaudio.save(candidate_path, wav, model.sr)
+                    save_wav(candidate_path, wav, model.sr)
 
                     # Wait briefly for filesystem consistency
                     for _ in range(10):
@@ -1278,7 +1281,7 @@ def process_text_for_tts(
                     if chunk_validations[chunk_idx]:
                         best_path = sorted(chunk_validations[chunk_idx], key=lambda x: x[0])[0][1]
                         print(f"\033[32m[DEBUG] Selected {best_path} as best candidate for chunk {chunk_idx} \033[1;33m(PASSED Whisper check)\033[0m")
-                        waveform, sr = torchaudio.load(best_path)
+                        waveform, sr = load_wav(best_path)
                         waveform_list.append(waveform)
                     elif chunk_failed_candidates[chunk_idx]:
                         if use_longest_transcript_on_fail:
@@ -1287,7 +1290,7 @@ def process_text_for_tts(
                         else:
                             best_failed = max(chunk_failed_candidates[chunk_idx], key=lambda x: x[0])
                             print(f"\033[33m[WARNING] No candidate passed for chunk {chunk_idx}. Using failed candidate with highest score: {best_failed[1]} (score={best_failed[0]:.3f})\033[0m")
-                        waveform, sr = torchaudio.load(best_failed[1])
+                        waveform, sr = load_wav(best_failed[1])
                         waveform_list.append(waveform)
                     else:
                         print(f"[ERROR] No candidates were generated for chunk {chunk_idx}.")
@@ -1318,7 +1321,7 @@ def process_text_for_tts(
                         best = min(valid_candidates, key=lambda c: c['duration'])
 
                     print(f"\033[32m[DEBUG] [Bypass Whisper] Selected {best['path']} as shortest candidate for chunk {chunk_idx}\033[0m")
-                    waveform, sr = torchaudio.load(best['path'])
+                    waveform, sr = load_wav(best['path'])
                     waveform_list.append(waveform)
                 else:
                     print(f"\033[33m[WARNING] No valid candidates found for chunk {chunk_idx} (all generations failed)\033[0m")
@@ -1332,7 +1335,7 @@ def process_text_for_tts(
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")[:-3]
         filename_suffix = f"{timestamp}_gen{gen_index+1}_seed{this_seed}"
         wav_output = f"output/{input_basename}audio_{filename_suffix}.wav"
-        torchaudio.save(wav_output, full_audio, model.sr)
+        save_wav(wav_output, full_audio, model.sr)
         print(f"\33[104m[DEBUG] \33[5mFinal audio concatenated, output file: {wav_output}\033[0m")
 
         # --- DENOISE (optional, before Auto-Editor) ---
@@ -1351,6 +1354,7 @@ def process_text_for_tts(
         if use_auto_editor:
             try:
                 cleaned_output = wav_output.replace(".wav", "_cleaned.wav")
+                stereo_input = wav_output.replace(".wav", "_ae_stereo.wav")
                 if keep_original_wav:
                     backup_path = wav_output.replace(".wav", "_original.wav")
                     os.rename(wav_output, backup_path)
@@ -1358,22 +1362,39 @@ def process_text_for_tts(
                 else:
                     auto_editor_input = wav_output
 
+                # auto-editor 29.x renders mono WAVs at double speed padded with silence,
+                # so feed it a stereo copy and downmix the result back to mono.
+                subprocess.run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", auto_editor_input, "-ac", "2", stereo_input
+                ], check=True)
+
                 auto_editor_cmd = [
                     "auto-editor",
                     "--edit", f"audio:threshold={ae_threshold}",
                     "--margin", f"{ae_margin}s",
-                    "--export", "audio",
-                    auto_editor_input,
+                    stereo_input,
                     "-o", cleaned_output
                 ]
 
                 subprocess.run(auto_editor_cmd, check=True)
 
                 if os.path.exists(cleaned_output):
-                    os.replace(cleaned_output, wav_output)
+                    subprocess.run([
+                        "ffmpeg", "-y", "-loglevel", "error", "-i", cleaned_output, "-ac", "1", wav_output
+                    ], check=True)
                     print(f"\033[32m[DEBUG] Post-processed with auto-editor: {wav_output}\033[0m")
             except Exception as e:
                 print(f"[ERROR] Auto-editor post-processing failed: {e}")
+                # Restore the original if it was moved aside, so later steps still find wav_output
+                if keep_original_wav and not os.path.exists(wav_output) and os.path.exists(backup_path):
+                    shutil.copyfile(backup_path, wav_output)
+            finally:
+                for p in [stereo_input, cleaned_output]:
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except Exception:
+                        pass
 
         if normalize_audio:
             try:
@@ -1389,6 +1410,10 @@ def process_text_for_tts(
                 print(f"\033[32m[DEBUG] Post-processed with ffmpeg normalization: {wav_output}\033[0m")
             except Exception as e:
                 print(f"[ERROR] ffmpeg normalization failed: {e}")
+
+        if not export_formats:
+            print("\033[33m[WARNING] No export format selected; defaulting to WAV.\033[0m")
+            export_formats = ["wav"]
 
         gen_outputs = []
         for export_format in export_formats:

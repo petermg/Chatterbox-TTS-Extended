@@ -1,23 +1,34 @@
-gradio==5.32.0
-numpy==2.2.6
-nltk==3.9.1
-faster-whisper==1.1.1
-openai-whisper==20240930
-ffmpeg-python==0.2.0
-auto-editor==27.1.1
-resampy==0.4.3
-librosa==0.10.0
-s3tokenizer==0.1.7
-spaces==0.36.0
-transformers==4.46.3
-diffusers==0.29.0
+# Core UI / ML
+gradio==6.31.0
+numpy==2.5.4
+nltk==3.10.4
+transformers==5.22.1
+diffusers==0.42.1
 omegaconf==2.3.0
-resemble-perth==1.0.1
-silero-vad==5.1.2
-conformer==0.3.2
-soundfile==0.13.1
-pyrnnoise==0.3.8
-    --extra-index-url=https://download.pytorch.org/whl/cu128
-    torch==2.7.0
-    torchaudio==2.7.0
+spaces==0.51.3
 
+# Whisper backends
+faster-whisper==1.2.1
+openai-whisper==20250625
+
+# Audio processing
+ffmpeg-python==0.2.0
+librosa==1.0.0
+resampy==0.4.3
+soundfile==0.14.0
+pyrnnoise==0.4.5
+silero-vad==5.1.2
+s3tokenizer==0.1.7
+conformer==0.3.2
+resemble-perth==1.0.1
+
+# Video / post-processing
+# Note: auto-editor CLI is no longer published on PyPI (last was ~29.x).
+# Prefer the official binary from https://github.com/WyattBlue/auto-editor/releases
+# or `brew install auto-editor`. Keeping a recent pin for compatibility if available.
+auto-editor==29.3.1
+
+# PyTorch (CUDA 13.2 wheels – update index if you need a different CUDA version)
+--extra-index-url=https://download.pytorch.org/whl/cu132
+torch==2.15.0
+torchaudio==2.11.1
